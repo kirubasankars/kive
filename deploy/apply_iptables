@@ -1,0 +1,40 @@
+#!/bin/bash
+# Copyright 2025 Kiruba Sankar Swaminathan. All rights reserved.
+# Use of this source code is governed by the GNU AGPL v3
+# license that can be found in the LICENSE file.
+
+# Apply kive iptables rules for one bucket on this worker.
+# Usage: apply_iptables <bucket_id>
+set -euo pipefail
+
+BUCKET_ID="${1:-}"
+if [[ -z "${BUCKET_ID}" ]]; then
+  # Derive from script location: /opt/kive/<bucket_id>/bin/apply_iptables
+  SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+  BUCKET_ID="$(basename "$(dirname "${SCRIPT_DIR}")")"
+fi
+
+RULES="/opt/kive/${BUCKET_ID}/etc/iptables.rules"
+if [[ ! -f "${RULES}" ]]; then
+  echo "apply_iptables: missing ${RULES}" >&2
+  exit 1
+fi
+
+if ! command -v iptables >/dev/null 2>&1; then
+  echo "apply_iptables: iptables not found on PATH" >&2
+  exit 1
+fi
+if ! command -v iptables-restore >/dev/null 2>&1; then
+  echo "apply_iptables: iptables-restore not found on PATH" >&2
+  exit 1
+fi
+
+# KIVE_ + sanitized bucket_id, max 28 chars (must match kive/iptables.ChainName).
+sanitize() {
+  echo "$1" | tr -cd 'A-Za-z0-9_' | cut -c1-22
+}
+CHAIN="KIVE_$(sanitize "${BUCKET_ID}")"
+
+iptables -N "${CHAIN}" 2>/dev/null || true
+iptables -C INPUT -j "${CHAIN}" 2>/dev/null || iptables -A INPUT -j "${CHAIN}"
+iptables-restore --noflush < "${RULES}"

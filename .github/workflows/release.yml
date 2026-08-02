@@ -1,0 +1,95 @@
+# Copyright 2025 Kiruba Sankar Swaminathan. All rights reserved.
+# Use of this source code is governed by the GNU AGPL v3
+# license that can be found in the LICENSE file.
+
+name: release
+
+# Build CGO binaries and attach them to a GitHub Release.
+# Triggered when a release is published, or manually via workflow_dispatch.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to upload binaries to (e.g. v0.9.0)
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            goos: linux
+            goarch: amd64
+          - os: ubuntu-24.04-arm
+            goos: linux
+            goarch: arm64
+          - os: macos-14
+            goos: darwin
+            goarch: arm64
+          - os: macos-13
+            goos: darwin
+            goarch: amd64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+
+      - name: Install Linux build deps
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y gcc
+
+      - name: Build
+        env:
+          CGO_ENABLED: "1"
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          VERSION="${{ github.event.release.tag_name || inputs.tag }}"
+          VERSION="${VERSION#v}"
+          GIT_HASH="$(git rev-parse --short HEAD)"
+          OUT="kive-v${VERSION}-${{ matrix.goos }}-${{ matrix.goarch }}"
+          go build -ldflags "-X kive/buildinfo.GitHash=${GIT_HASH} -X kive/buildinfo.Version=v${VERSION}" -o kive .
+          tar -czf "${OUT}.tar.gz" kive
+          shasum -a 256 "${OUT}.tar.gz" | awk '{print $1}' > "${OUT}.tar.gz.sha256"
+          echo "ASSET_BASE=${OUT}" >> "$GITHUB_ENV"
+
+      - name: Upload release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name || inputs.tag }}
+        run: |
+          gh release upload "$TAG" \
+            "${ASSET_BASE}.tar.gz" \
+            "${ASSET_BASE}.tar.gz.sha256" \
+            --clobber
+
+  checksums:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish combined SHA256SUMS
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name || inputs.tag }}
+        run: |
+          gh release download "$TAG" --pattern '*.tar.gz.sha256' --dir sums
+          {
+            echo "# SHA256 checksums for ${TAG}"
+            for f in sums/*.sha256; do
+              base="$(basename "$f" .sha256)"
+              printf '%s  %s\n' "$(tr -d ' \n' < "$f")" "$base"
+            done | sort
+          } > SHA256SUMS
+          gh release upload "$TAG" SHA256SUMS --clobber

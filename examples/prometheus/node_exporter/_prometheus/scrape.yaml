@@ -1,0 +1,13 @@
+# Copyright 2025 Kiruba Sankar Swaminathan. All rights reserved.
+# Use of this source code is governed by the GNU AGPL v3
+# license that can be found in the LICENSE file.
+
+- job_name: node_exporter
+  metrics_path: /metrics
+  sample_limit: 5000
+  body_size_limit: 10MB
+  static_configs:
+    - targets:
+        - kive:port/node_exporter_metrics_port
+      labels:
+        kive_job: node_exporter

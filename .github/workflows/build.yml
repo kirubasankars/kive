@@ -1,0 +1,41 @@
+# Copyright 2025 Kiruba Sankar Swaminathan. All rights reserved.
+# Use of this source code is governed by the GNU AGPL v3
+# license that can be found in the LICENSE file.
+
+name: build
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+
+      - name: Assert CLI-only tree
+        run: |
+          set -euo pipefail
+          for p in server edit push cmd/server.go cmd/server_worker.go cmd/push.go cmd/edit.go cmd/snapshot.go; do
+            if [ -e "$p" ]; then
+              echo "control-plane path present: $p" >&2
+              exit 1
+            fi
+          done
+          if grep -rIl --exclude-dir=.github -e 'go:build server' -e 'tags server' -e 'build-server' -e 'kive-server' .; then
+            echo "export mentions the private server build tag" >&2
+            exit 1
+          fi
+
+      - name: Install build deps
+        run: sudo apt-get update && sudo apt-get install -y gcc
+
+      - name: Build
+        env:
+          CGO_ENABLED: "1"
+        run: make build

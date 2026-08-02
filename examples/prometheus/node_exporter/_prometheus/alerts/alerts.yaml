@@ -1,0 +1,14 @@
+# Copyright 2025 Kiruba Sankar Swaminathan. All rights reserved.
+# Use of this source code is governed by the GNU AGPL v3
+# license that can be found in the LICENSE file.
+
+groups:
+  - name: node_exporter_availability
+    rules:
+      - alert: node_exporter_metrics_down
+        expr: up{job="node_exporter"} == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "node_exporter metrics down on {{ $labels.instance }}"

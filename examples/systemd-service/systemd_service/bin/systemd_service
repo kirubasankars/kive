@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Copyright 2025 Kiruba Sankar Swaminathan. All rights reserved.
+# Use of this source code is governed by the GNU AGPL v3
+# license that can be found in the LICENSE file.
+
+set -euo pipefail
+mkdir -p data
+echo running > data/status
+date >> data/start.log
+# Stay up so systemd Type=simple keeps the unit active.
+exec sleep infinity
