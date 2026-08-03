@@ -1,0 +1,63 @@
+# Copyright 2025 Kiruba Sankar Swaminathan. All rights reserved.
+# Use of this source code is governed by the GNU AGPL v3
+# license that can be found in the LICENSE file.
+
+.PHONY: cert-permissions install uninstall start stop restart status
+
+JOB_NAME := systemd_service
+UNIT ?= kive-$(JOB_NAME).service
+EXEC_START ?= $(CURDIR)/bin/$(JOB_NAME)
+SERVICE_USER ?= $(shell id -un)
+UNIT_DIR ?= /etc/systemd/system
+UNIT_PATH = $(UNIT_DIR)/$(UNIT)
+SYSTEMCTL ?= sudo systemctl
+INSTALL ?= sudo install
+REMOVE ?= sudo rm -f
+CERT_DIR ?= certs
+
+cert-permissions:
+	@if [ -d "$(CERT_DIR)" ]; then \
+		chmod 0755 "$(CERT_DIR)"; \
+		find "$(CERT_DIR)" -type f -name '*.key' -exec chmod 0600 {} +; \
+		find "$(CERT_DIR)" -type f ! -name '*.key' -exec chmod 0644 {} +; \
+	fi
+
+install: cert-permissions
+	@test -x "$(EXEC_START)" || { echo "service executable is not runnable: $(EXEC_START)" >&2; exit 1; }
+	@tmp=$$(mktemp); trap 'rm -f "$$tmp"' EXIT; \
+		printf '%s\n' \
+			'[Unit]' \
+			'Description=Kive job $(JOB_NAME)' \
+			'After=network-online.target' \
+			'Wants=network-online.target' \
+			'' \
+			'[Service]' \
+			'Type=simple' \
+			'User=$(SERVICE_USER)' \
+			'WorkingDirectory=$(CURDIR)' \
+			'ExecStart=$(EXEC_START)' \
+			'Restart=on-failure' \
+			'RestartSec=5s' \
+			'' \
+			'[Install]' \
+			'WantedBy=multi-user.target' > "$$tmp"; \
+		$(INSTALL) -m 0644 "$$tmp" "$(UNIT_PATH)"
+	$(SYSTEMCTL) daemon-reload
+
+uninstall:
+	@$(SYSTEMCTL) disable --now "$(UNIT)" >/dev/null 2>&1 || true
+	$(REMOVE) "$(UNIT_PATH)"
+	$(SYSTEMCTL) daemon-reload
+
+start: install
+	$(SYSTEMCTL) enable --now "$(UNIT)"
+
+stop:
+	$(SYSTEMCTL) stop "$(UNIT)"
+
+restart: install
+	@$(SYSTEMCTL) enable "$(UNIT)" >/dev/null
+	$(SYSTEMCTL) restart "$(UNIT)"
+
+status:
+	$(SYSTEMCTL) status "$(UNIT)" --no-pager

@@ -1,0 +1,42 @@
+# Copyright 2025 Kiruba Sankar Swaminathan. All rights reserved.
+# Use of this source code is governed by the GNU AGPL v3
+# license that can be found in the LICENSE file.
+
+groups:
+  - name: kive_certs
+    rules:
+      - alert: kive cert expiring soon
+        expr: kive_cert_expiring == 1 and kive_cert_not_after_seconds > time()
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "TLS cert {{ $labels.cert }} expiring ({{ $labels.job }} on {{ $labels.worker }})"
+          description: "Certificate {{ $labels.cert }} for job {{ $labels.job }} on {{ $labels.worker }} is within the kive renewal buffer."
+
+      - alert: kive cert expired
+        expr: kive_cert_not_after_seconds < time()
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "TLS cert {{ $labels.cert }} expired ({{ $labels.job }} on {{ $labels.worker }})"
+          description: "Certificate {{ $labels.cert }} for job {{ $labels.job }} on {{ $labels.worker }} is past NotAfter. Run kive build && kive deploy."
+
+      - alert: kive ca cert expiring soon
+        expr: kive_cert_expiring{scope="ca"} == 1 and kive_cert_not_after_seconds{scope="ca"} > time()
+        for: 1h
+        labels:
+          severity: critical
+        annotations:
+          summary: "kive CA certificate expiring soon"
+          description: "Bucket CA is within the kive renewal buffer. Run kive build to rotate."
+
+      - alert: kive ca cert expired
+        expr: kive_cert_not_after_seconds{scope="ca"} < time()
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "kive CA certificate expired"
+          description: "Bucket CA is past NotAfter. Run kive build && kive deploy immediately."
